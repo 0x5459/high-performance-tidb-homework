@@ -14,7 +14,7 @@ git clone https://github.com/tikv/tikv.git
 ```
 
 ## 改写
-打开 tidb 源代码, 尝试搜索 Begin，发现 kv/kv.go 中存在一个 Storage 接口, 该接口中包含 `Begin() (Transaction, error)` 和 `BeginWithStartTS(startTS uint64) (Transaction, error)` 方法。 
+打开 tidb 源代码， 尝试搜索 Begin，发现 kv/kv.go 中存在一个 Storage 接口， 该接口中包含 `Begin() (Transaction, error)` 和 `BeginWithStartTS(startTS uint64) (Transaction, error)` 方法。 
 
 于是寻找包含这个接口的结构体，找到了 session/session.go 中的 session 结构体。研究了一会 session.go。发现 session 结构体中的 `txn TxnState` 字段很可疑。遂打开其源码，看到一行注释:
 
@@ -55,7 +55,7 @@ make build
 ## 运行
 结合 [官方文档](https://docs.pingcap.com/zh/tidb/stable/command-line-flags-for-tidb-configuration) 和自己摸索源代码，才最终能够成功运行。
 
-1. 运行 pd
+### 1. 运行 pd
 ```shell
 nohup pd/bin/pd-server --name="pd" \
           --data-dir="data/pd" \
@@ -64,7 +64,7 @@ nohup pd/bin/pd-server --name="pd" \
           --log-file="log/pd.log" >/dev/null 2>&1 &
 ```
 
-2. 运行 tikv
+### 2. 运行 tikv
 
 ```shell
 nohup tikv/target/debug/tikv-server --log-file="log/tikv1.log" \
@@ -83,7 +83,7 @@ nohup tikv/target/debug/tikv-server --log-file="log/tikv3.log" \
                 --pd-endpoints="http://127.0.0.1:2379" >/dev/null 2>&1 &
 ```
 
-3. 运行 tidb
+### 3. 运行 tidb
 ```shell
 nohup ./tidb/bin/tidb-server --store="tikv" \
                 --path="127.0.0.1:2379" \
