@@ -169,10 +169,11 @@ report-interval=10
 db-driver=mysql
 ```
 
-设置乐观事务模式
+创建数据库并设置乐观事务模式
 
 `mysql -u root -h 172.19.215.80 -P 3390`
 ```
+mysql> create database sbtest;
 mysql> set global tidb_disable_txn_auto_retry = off;
 mysql> set global tidb_txn_mode="optimistic";
 ```
@@ -180,6 +181,11 @@ mysql> set global tidb_txn_mode="optimistic";
 导入数据
 
 `nohup sysbench --config-file=config oltp_point_select --threads=128 --tables=32 --table-size=500000 prepare 2>&1 &`
+
+数据导入成功，恢复悲观事务。
+```
+mysql> set global tidb_txn_mode="pessimistic";
+```
 
 Point select 测试
 
@@ -231,9 +237,20 @@ Threads fairness:
     events (avg/stddev):           220229.3594/109371.77
     execution time (avg/stddev):   599.8609/0.10
 ```
+Graafana tidb query summary
 
+![tidb query symmary](media/lesson02/point-select-tidb-query-summary.png)
+
+Graafana tikv cluster
+
+![tikv cluster](media/lesson02/point-select-tikv-cluster.png)
+
+Graafana tikv grpc
+
+![tikv grpc](media/lesson02/point-select-tikv-grpc.png)
 
 Update index 测试
+
 `sysbench --config-file=config oltp_update_index --threads=256 --tables=32 --table-size=500000 run`
 
 ```
@@ -280,6 +297,14 @@ Threads fairness:
     events (avg/stddev):           26844.8555/381.79
     execution time (avg/stddev):   600.0598/0.05
 ```
+
+Graafana tidb query summary
+
+![tidb query symmary](media/lesson02/update-index-tidb-query-summary.png)
+
+Graafana tikv cluster
+
+![tikv cluster](media/lesson02/update-index-tikv-cluster.png)
 
 Read-only 测试
 
@@ -330,4 +355,246 @@ Threads fairness:
     execution time (avg/stddev):   600.0433/0.04
 ```
 
+Graafana tidb query summary
+
+![tidb query symmary](media/lesson02/read-only-tidb-query-summary.png)
+
+Graafana tikv cluster
+
+![tikv cluster](media/lesson02/read-only-tikv-cluster.png)
+
+Graafana tikv grpc
+
+![tikv grpc](media/lesson02/read-only-tikv-grpc.png)
+
+### 2. go-ycsb
+
+安装 go-ycsb
+```shell
+git clone https://github.com/pingcap/go-ycsb.git
+cd go-ycsb
+make
+```
+
+导入数据
+
+```
+./bin/go-ycsb load mysql -P workloads/workloada -p recordcount=5000000 -p mysql.host=172.19.215.80 -p mysql.port=3390 --threads 256
+
+...
+Run finished, takes 13m8.214554573s
+```
+
+运行
+```
+./bin/go-ycsb run mysql -P workloads/workloada -p operationcount=5000000 -p mysql.host=172.19.215.80 -p mysql.port=3390 --threads 256
+```
+
+Graafana tidb query symmary
+
+![tidb query symmary](media/lesson02/ycsb-tidb-query-summary.png)
+
+Graafana tikv cluster
+
+![tikv cluster](media/lesson02/ycsb-tikv-cluster.png)
+
+
+### 3. go-tpc
+
+安装 go-tpc
+
+```
+git clone https://github.com/pingcap/go-tpc.git
+cd go-tpc
+make build
+```
+
+导入数据
+
+```
+./bin/go-tpc tpcc -H 172.19.215.80 -P 3390 -D tpcc --warehouses 300 prepare -T 256
+```
+
+运行
+
+```shell
+./bin/go-tpc tpcc -H 172.19.215.80 -P 3390 -D tpcc --warehouses 300 run --time 10m --threads 256
+
+...
+Finished
+[Summary] DELIVERY - Takes(s): 1.2, Count: 50, TPM: 2552.7, Sum(ms): 5907, Avg(ms): 118, 90th(ms): 256, 99th(ms): 512, 99.9th(ms): 512
+[Summary] NEW_ORDER - Takes(s): 1.4, Count: 354, TPM: 15519.1, Sum(ms): 31724, Avg(ms): 89, 90th(ms): 192, 99th(ms): 256, 99.9th(ms): 512
+[Summary] NEW_ORDER_ERR - Takes(s): 1.4, Count: 101, TPM: 4427.7, Sum(ms): 2371, Avg(ms): 23, 90th(ms): 48, 99th(ms): 256, 99.9th(ms): 256
+[Summary] ORDER_STATUS - Takes(s): 1.3, Count: 34, TPM: 1570.1, Sum(ms): 922, Avg(ms): 27, 90th(ms): 64, 99th(ms): 96, 99.9th(ms): 96
+[Summary] ORDER_STATUS_ERR - Takes(s): 1.3, Count: 15, TPM: 692.7, Sum(ms): 298, Avg(ms): 19, 90th(ms): 48, 99th(ms): 48, 99.9th(ms): 48
+[Summary] PAYMENT - Takes(s): 1.3, Count: 353, TPM: 16119.8, Sum(ms): 23861, Avg(ms): 67, 90th(ms): 128, 99th(ms): 256, 99.9th(ms): 256
+[Summary] PAYMENT_ERR - Takes(s): 1.3, Count: 140, TPM: 6393.1, Sum(ms): 6202, Avg(ms): 44, 90th(ms): 112, 99th(ms): 256, 99.9th(ms): 256
+[Summary] STOCK_LEVEL - Takes(s): 1.3, Count: 41, TPM: 1930.3, Sum(ms): 1555, Avg(ms): 37, 90th(ms): 80, 99th(ms): 160, 99.9th(ms): 160
+tpmC: 15518.1
+```
+
+在测试的过程中发现两个 TIDB 节点的 CPU 负载很高，因此增加一个 TIDB 节点。
+修改 TIUP 配置为:
+
+```yaml
+global:
+  user: "tidb"
+  ssh_port: 22
+  deploy_dir: "/tidb-deploy"
+  data_dir: "/tidb-data"
+
+pd_servers:
+  - host: 172.19.215.89
+  - host: 172.19.215.87
+  - host: 172.19.215.86
+
+tidb_servers:
+  - host: 172.19.215.81
+  - host: 172.19.215.80
+  # 新增一个 4C8G 的节点
+  - host: 172.19.215.92
+
+tikv_servers:
+  - host: 172.19.215.89
+  - host: 172.19.215.87
+  - host: 172.19.215.86
+
+monitoring_servers:
+  - host: 172.19.215.84
+
+grafana_servers:
+  - host: 172.19.215.84
+
+alertmanager_servers:
+  - host: 172.19.215.84
+```
+
+重新部署 TIDB 集群
+
+![TIDB Dashboard](media/lesson02/dashboard-2.png)
+
+修改 HAProxy 配置文件，在最后新增一行 
+
+`server tidb-3 172.19.215.92:4000 check inter 2000 rise 2 fall 3`
+
+代理了 3 个节点
+
+![HAProxy](media/lesson02/haproxy-2.png)
+
+再次运行 sysbench 测试
+
+Point select 测试
+
+`sysbench --config-file=config oltp_point_select --threads=256 --tables=32 --table-size=500000 run`
+
+```
+sysbench 1.0.20 (using bundled LuaJIT 2.1.0-beta2)
+
+Running the test with following options:
+Number of threads: 256
+Report intermediate results every 10 second(s)
+Initializing random number generator from current time
+
+
+Initializing worker threads...
+
+Threads started!
+
+[ 10s ] thds: 256 tps: 112630.42 qps: 112630.42 (r/w/o: 112630.42/0.00/0.00) lat (ms,95%): 5.99 err/s: 0.00 reconn/s: 0.00
+...
+...
+...
+[ 600s ] thds: 256 tps: 118090.22 qps: 118090.22 (r/w/o: 118090.22/0.00/0.00) lat (ms,95%): 5.77 err/s: 0.00 reconn/s: 0.00
+SQL statistics:
+    queries performed:
+        read:                            73248715
+        write:                           0
+        other:                           0
+        total:                           73248715
+    transactions:                        73248715 (122068.28 per sec.)
+    queries:                             73248715 (122068.28 per sec.)
+    ignored errors:                      0      (0.00 per sec.)
+    reconnects:                          0      (0.00 per sec.)
+
+General statistics:
+    total time:                          600.0618s
+    total number of events:              73248715
+
+Latency (ms):
+         min:                                    0.41
+         avg:                                    2.10
+         max:                                  319.89
+         95th percentile:                        5.18
+         sum:                            153549623.78
+
+Threads fairness:
+    events (avg/stddev):           286127.7930/133761.37
+    execution time (avg/stddev):   599.8032/0.16
+```
+
+
+Read-only 测试
+
+`sysbench --config-file=config oltp_read_only --threads=256 --tables=32 --table-size=500000 run`
+
+```
+sysbench 1.0.20 (using bundled LuaJIT 2.1.0-beta2)
+
+Running the test with following options:
+Number of threads: 256
+Report intermediate results every 10 second(s)
+Initializing random number generator from current time
+
+
+Initializing worker threads...
+
+
+Threads started!
+
+[ 10s ] thds: 256 tps: 2921.49 qps: 46952.04 (r/w/o: 41084.36/0.00/5867.68) lat (ms,95%): 134.90 err/s: 0.00 reconn/s: 0.00
+...
+...
+...
+[ 600s ] thds: 256 tps: 2984.85 qps: 47733.88 (r/w/o: 41765.38/0.00/5968.50) lat (ms,95%): 132.49 err/s: 0.00 reconn/s: 0.00
+SQL statistics:
+    queries performed:
+        read:                            24601262
+        write:                           0
+        other:                           3514466
+        total:                           28115728
+    transactions:                        1757233 (2927.66 per sec.)
+    queries:                             28115728 (46842.53 per sec.)
+    ignored errors:                      0      (0.00 per sec.)
+    reconnects:                          0      (0.00 per sec.)
+
+General statistics:
+    total time:                          600.2163s
+    total number of events:              1757233
+
+Latency (ms):
+         min:                                   12.27
+         avg:                                   87.42
+         max:                                  560.85
+         95th percentile:                      134.90
+         sum:                            153612252.02
+
+Threads fairness:
+    events (avg/stddev):           6864.1914/1944.15
+    execution time (avg/stddev):   600.0479/0.04
+
+```
+
+Graafana tidb query summary
+
+![tidb query symmary](media/lesson02/read-only-tidb-query-summary.png)
+
+Graafana tikv cluster
+
+![tikv cluster](media/lesson02/read-only-tikv-cluster.png)
+
+Graafana tikv grpc
+
+![tikv grpc](media/lesson02/read-only-tikv-grpc.png)
+
+性能有所提升！
 
