@@ -149,14 +149,14 @@ listen tidb-cluster                        # 配置 database 负载均衡。
 
 ### 1. sysbench
 
-安装 sysbench 
+#### 安装 sysbench 
 ```shell
 curl -s https://packagecloud.io/install/repositories/akopytov/sysbench/script.deb.sh | sudo bash
 
 sudo apt -y install sysbench
 ```
 
-sysbench 配置文件
+#### sysbench 配置文件
 ```
 mysql-host=172.19.215.80
 mysql-port=3390
@@ -169,7 +169,7 @@ report-interval=10
 db-driver=mysql
 ```
 
-创建数据库并设置乐观事务模式
+#### 创建数据库并设置乐观事务模式
 
 `mysql -u root -h 172.19.215.80 -P 3390`
 ```
@@ -178,16 +178,16 @@ mysql> set global tidb_disable_txn_auto_retry = off;
 mysql> set global tidb_txn_mode="optimistic";
 ```
 
-导入数据
+#### 导入数据
 
 `nohup sysbench --config-file=config oltp_point_select --threads=128 --tables=32 --table-size=500000 prepare 2>&1 &`
 
-数据导入成功，恢复悲观事务。
+#### 数据导入成功，恢复悲观事务。
 ```
 mysql> set global tidb_txn_mode="pessimistic";
 ```
 
-Point select 测试
+#### Point select 测试
 
 `sysbench --config-file=config oltp_point_select --threads=256 --tables=32 --table-size=500000 run`
 
@@ -249,7 +249,7 @@ Graafana tikv grpc
 
 ![tikv grpc](media/lesson02/point-select-tikv-grpc.png)
 
-Update index 测试
+#### Update index 测试
 
 `sysbench --config-file=config oltp_update_index --threads=256 --tables=32 --table-size=500000 run`
 
@@ -306,7 +306,7 @@ Graafana tikv cluster
 
 ![tikv cluster](media/lesson02/update-index-tikv-cluster.png)
 
-Read-only 测试
+#### Read-only 测试
 
 `sysbench --config-file=config oltp_read_only --threads=256 --tables=32 --table-size=500000 run`
 
@@ -369,14 +369,14 @@ Graafana tikv grpc
 
 ### 2. go-ycsb
 
-安装 go-ycsb
+#### 安装 go-ycsb
 ```shell
 git clone https://github.com/pingcap/go-ycsb.git
 cd go-ycsb
 make
 ```
 
-导入数据
+#### 导入数据
 
 ```
 ./bin/go-ycsb load mysql -P workloads/workloada -p recordcount=5000000 -p mysql.host=172.19.215.80 -p mysql.port=3390 --threads 256
@@ -385,7 +385,7 @@ make
 Run finished, takes 13m8.214554573s
 ```
 
-运行
+#### 运行
 ```
 ./bin/go-ycsb run mysql -P workloads/workloada -p operationcount=5000000 -p mysql.host=172.19.215.80 -p mysql.port=3390 --threads 256
 ```
@@ -401,7 +401,7 @@ Graafana tikv cluster
 
 ### 3. go-tpc
 
-安装 go-tpc
+#### 安装 go-tpc
 
 ```
 git clone https://github.com/pingcap/go-tpc.git
@@ -409,13 +409,13 @@ cd go-tpc
 make build
 ```
 
-导入数据
+#### 导入数据
 
 ```
 ./bin/go-tpc tpcc -H 172.19.215.80 -P 3390 -D tpcc --warehouses 300 prepare -T 256
 ```
 
-运行
+#### 运行
 
 ```shell
 ./bin/go-tpc tpcc -H 172.19.215.80 -P 3390 -D tpcc --warehouses 300 run --time 10m --threads 256
@@ -433,6 +433,7 @@ Finished
 tpmC: 15518.1
 ```
 
+## 性能分析
 在测试的过程中发现两个 TIDB 节点的 CPU 负载很高，因此增加一个 TIDB 节点。
 修改 TIUP 配置为:
 
@@ -483,7 +484,7 @@ alertmanager_servers:
 
 再次运行 sysbench 测试
 
-Point select 测试
+#### Point select 测试
 
 `sysbench --config-file=config oltp_point_select --threads=256 --tables=32 --table-size=500000 run`
 
@@ -533,7 +534,7 @@ Threads fairness:
 ```
 
 
-Read-only 测试
+#### Read-only 测试
 
 `sysbench --config-file=config oltp_read_only --threads=256 --tables=32 --table-size=500000 run`
 
@@ -597,4 +598,3 @@ Graafana tikv grpc
 ![tikv grpc](media/lesson02/read-only-tikv-grpc.png)
 
 性能有所提升！
-
